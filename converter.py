@@ -121,26 +121,32 @@ if __name__ == '__main__':
     time_flag = time.time()
     img_save_path = os.path.join(dir_path, phase + 'images')
     anno_save_path = os.path.join(dir_path, phase + 'annotations.json')
-    if os.path.exists(img_save_path):
-        raise KeyError('Already exists : {}'.format(img_save_path))
-    else:
+    if not os.path.exists(img_save_path):
         os.mkdir(img_save_path)
     print 'Images will be saved to {}'.format(img_save_path)
     print 'Annotations will be saved to {}'.format(anno_save_path)
 
     #  convert .seq file into .jpg
     for i in range(num[0], num[1]):
-        img_set_path = os.path.join(dir_path, 'set{:02}'.format(i))
+        set_name = 'set{:02}'.format(i)
+        img_set_path = os.path.join(dir_path, set_name)
         assert os.path.exists(
             img_set_path), 'Not exists: '.format(img_set_path)
         print 'Extracting images from set{:02} ...'.format(i)
+        set_save_path = os.path.join(img_save_path, set_name)
+        if not os.path.exists(set_save_path):
+            os.mkdir(set_save_path)
         for j in sorted(os.listdir(img_set_path)):
             imgs_path = os.path.join(img_set_path, j)
             imgs = read_seq(imgs_path)
+            seq_name = j[:4]
+            seq_save_path = os.path.join(set_save_path, seq_name)
+            if not os.path.exists(seq_save_path):
+                os.mkdir(seq_save_path)
             for ix, img in enumerate(imgs):
-                img_name = 'img{:02}{}{:04}.jpg'.format(i, j[2:4], ix)
-                img_path = os.path.join(img_save_path, img_name)
-                open(img_path, 'wb+').write(img)
+                img_name = '{:05}.jpg'.format(ix)
+                img_path = os.path.join(seq_save_path, img_name)
+                open(img_path, 'wb').write(img)
 
     print 'Images have been saved.'
 
@@ -158,7 +164,7 @@ if __name__ == '__main__':
             anno_path = os.path.join(anno_set_path, j)
             anno['{:02}'.format(i)][j[2:4]] = read_vbb(anno_path)
 
-    with open(anno_save_path, 'wb') as f:
+    with open(anno_save_path, 'w') as f:
         json.dump(anno, f)
 
     print 'Annotations have been saved.'
