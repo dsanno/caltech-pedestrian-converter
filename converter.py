@@ -9,9 +9,9 @@
 # Caltech Pedestrian Dataset:
 # http://www.vision.caltech.edu/Image_Datasets/CaltechPedestrians/
 
+import json
 import struct
 import os
-import cPickle
 import time
 from scipy.io import loadmat
 from collections import defaultdict
@@ -112,7 +112,7 @@ def read_vbb(path):
 
 if __name__ == '__main__':
     # directory to store data
-    dir_path = './'
+    dir_path = './data/'
     # phase can be 'train_', 'test_' or 'val_'
     phase = ''
     # num ranges from 0~11
@@ -120,7 +120,7 @@ if __name__ == '__main__':
 
     time_flag = time.time()
     img_save_path = os.path.join(dir_path, phase + 'images')
-    anno_save_path = os.path.join(dir_path, phase + 'annotations.pkl')
+    anno_save_path = os.path.join(dir_path, phase + 'annotations.json')
     if os.path.exists(img_save_path):
         raise KeyError('Already exists : {}'.format(img_save_path))
     else:
@@ -159,7 +159,7 @@ if __name__ == '__main__':
             anno['{:02}'.format(i)][j[2:4]] = read_vbb(anno_path)
 
     with open(anno_save_path, 'wb') as f:
-        cPickle.dump(anno, f)
+        json.dump(anno, f)
 
     print 'Annotations have been saved.'
 
