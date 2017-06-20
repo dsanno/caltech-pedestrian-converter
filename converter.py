@@ -1,14 +1,18 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# This script converts .seq files into .jpg files, .vbb files into .pkl files
+# This script converts .seq files into .jpg files, .vbb files into .json files
 # from Caltech Pedestrian Dataset
 # Based on Python 2.7
-# Author: Peng Zhang
+
+# Modified by Daiki Sanno
+
+# Original Author: Peng Zhang
 # E-mail: hizhangp@gmail.com
 # Caltech Pedestrian Dataset:
 # http://www.vision.caltech.edu/Image_Datasets/CaltechPedestrians/
 
+import argparse
 import json
 import struct
 import os
@@ -17,13 +21,26 @@ from scipy.io import loadmat
 from collections import defaultdict
 
 
-def read_seq(path):
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--data-dir', type=str, default='data',
+        help='Input data directory')
+    parser.add_argument('--output-dir', type=str, default='data',
+        help='Output directory')
+    parser.add_argument('--train-interval', type=int, default=5,
+        help='Train data frame interval')
+    parser.add_argument('--test-interval', type=int, default=30,
+        help='Test data frame interval')
+    return parser.parse_args()
+
+
+def read_seq(path, interval=1):
     def read_header(ifile):
         feed = ifile.read(4)
         norpix = ifile.read(24)
         version = struct.unpack('@i', ifile.read(4))
         length = struct.unpack('@i', ifile.read(4))
-        assert(length != 1024)
+        assert length != 1024
         descr = ifile.read(512)
         params = [struct.unpack('@i', ifile.read(4))[0] for i in range(9)]
         fps = struct.unpack('@d', ifile.read(8))
@@ -53,7 +70,8 @@ def read_seq(path):
             else:
                 extra += 8
                 s += 8
-        imgs.append(I)
+        if (i + 1) % interval == 0:
+            imgs.append((i, I))
 
     return imgs
 
@@ -110,48 +128,60 @@ def read_vbb(path):
     return data
 
 
-if __name__ == '__main__':
+def convert_seq(set_index, input_dir, output_dir, interval=1):
+    set_name = 'set{:02}'.format(set_index)
+    img_set_path = os.path.join(input_dir, set_name)
+    assert os.path.exists(
+        img_set_path), 'Not exists: '.format(img_set_path)
+    print('Extracting images from set{:02} ...'.format(set_index))
+    set_save_path = os.path.join(output_dir, set_name)
+    if not os.path.exists(set_save_path):
+        os.mkdir(set_save_path)
+    for j in sorted(os.listdir(img_set_path)):
+        imgs_path = os.path.join(img_set_path, j)
+        imgs = read_seq(imgs_path, interval)
+        seq_name = j[:4]
+        seq_save_path = os.path.join(set_save_path, seq_name)
+        if not os.path.exists(seq_save_path):
+            os.mkdir(seq_save_path)
+        for ix, img in imgs:
+            img_name = '{:05}.jpg'.format(ix)
+            img_path = os.path.join(seq_save_path, img_name)
+            open(img_path, 'wb').write(img)
+
+def main():
+    args = parse_args()
     # directory to store data
-    dir_path = './data/'
-    # phase can be 'train_', 'test_' or 'val_'
-    phase = ''
+    dir_path = args.data_dir
+    output_path = args.output_dir
     # num ranges from 0~11
     num = [0, 11]
+    train_range = [0, 6]
+    test_range = [6, 11]
 
     time_flag = time.time()
-    img_save_path = os.path.join(dir_path, phase + 'images')
-    anno_save_path = os.path.join(dir_path, phase + 'annotations.json')
-    if not os.path.exists(img_save_path):
-        os.mkdir(img_save_path)
-    print 'Images will be saved to {}'.format(img_save_path)
-    print 'Annotations will be saved to {}'.format(anno_save_path)
+    train_img_save_path = os.path.join(output_path, 'train_images')
+    test_img_save_path = os.path.join(output_path, 'test_images')
+    anno_save_path = os.path.join(output_path, 'annotations.json')
+    if not os.path.exists(train_img_save_path):
+        os.mkdir(train_img_save_path)
+    if not os.path.exists(test_img_save_path):
+        os.mkdir(test_img_save_path)
+    print('Images will be saved to')
+    print(train_img_save_path)
+    print(test_img_save_path)
+    print('Annotations will be saved to {}'.format(anno_save_path))
 
     #  convert .seq file into .jpg
-    for i in range(num[0], num[1]):
-        set_name = 'set{:02}'.format(i)
-        img_set_path = os.path.join(dir_path, set_name)
-        assert os.path.exists(
-            img_set_path), 'Not exists: '.format(img_set_path)
-        print 'Extracting images from set{:02} ...'.format(i)
-        set_save_path = os.path.join(img_save_path, set_name)
-        if not os.path.exists(set_save_path):
-            os.mkdir(set_save_path)
-        for j in sorted(os.listdir(img_set_path)):
-            imgs_path = os.path.join(img_set_path, j)
-            imgs = read_seq(imgs_path)
-            seq_name = j[:4]
-            seq_save_path = os.path.join(set_save_path, seq_name)
-            if not os.path.exists(seq_save_path):
-                os.mkdir(seq_save_path)
-            for ix, img in enumerate(imgs):
-                img_name = '{:05}.jpg'.format(ix)
-                img_path = os.path.join(seq_save_path, img_name)
-                open(img_path, 'wb').write(img)
+    for i in range(train_range[0], train_range[1]):
+        convert_seq(i, dir_path, train_img_save_path, interval=args.train_interval)
+    for i in range(test_range[0], test_range[1]):
+        convert_seq(i, dir_path, test_img_save_path, interval=args.test_interval)
 
-    print 'Images have been saved.'
+    print('Images have been saved.')
 
-    # convert .vbb file into .pkl
-    # example: anno['00']['00']['frames'][0][0]['pos']
+    # convert .vbb file into .json
+    # example: anno['00']['00']['frames']['0'][0]['pos']
     anno = defaultdict(dict)
     for i in range(num[0], num[1]):
         anno['{:02}'.format(i)] = defaultdict(dict)
@@ -159,7 +189,7 @@ if __name__ == '__main__':
                                      'set{:02}'.format(i))
         assert os.path.exists(anno_set_path), \
             'Not exists: '.format(anno_set_path)
-        print 'Extracting annotations from set{:02} ...'.format(i)
+        print('Extracting annotations from set{:02} ...'.format(i))
         for j in sorted(os.listdir(anno_set_path)):
             anno_path = os.path.join(anno_set_path, j)
             anno['{:02}'.format(i)][j[2:4]] = read_vbb(anno_path)
@@ -167,6 +197,9 @@ if __name__ == '__main__':
     with open(anno_save_path, 'w') as f:
         json.dump(anno, f)
 
-    print 'Annotations have been saved.'
+    print('Annotations have been saved.')
 
-    print 'Done, time spends: {}s'.format(int(time.time() - time_flag))
+    print('Done, time spends: {}s'.format(int(time.time() - time_flag)))
+
+if __name__ == '__main__':
+    main()
