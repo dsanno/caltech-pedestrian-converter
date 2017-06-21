@@ -106,7 +106,7 @@ def read_vbb(path):
                                                  obj['occl'][0],
                                                  obj['lock'][0],
                                                  obj['posv'][0]):
-                keys = obj.dtype.names
+                keys = ['id', 'pos', 'occl', 'lock', 'posv']
                 id = int(id[0][0]) - 1  # MATLAB is 1-origin
                 p = pos[0].tolist()
                 pos = [p[0] - 1, p[1] - 1, p[2], p[3]]  # MATLAB is 1-origin
@@ -127,8 +127,30 @@ def read_vbb(path):
 
     return data
 
+def make_image_annotation(annotations, set_index, seq_index, frame):
+    set_label = '{0:02d}'.format(set_index)
+    seq_label = '{0:02d}'.format(seq_index)
+    image_annotations = annotations[set_label][seq_label]['frames'][frame]
+    regions = []
+    for annotation in image_annotations:
+        if annotation['lbl'] != 'person':
+            continue
+        x, y, w, h = annotation['pos']
+        vx, vy, vw, vh = annotation['posv']
+        if vx == 0 and vy == 0 and vw == 0 and vh == 0:
+            vx = x
+            vy = y
+            vw = w
+            vh = h
+        regions.append({
+            'category': 'person',
+            'bbox': [x, y, w, h],
+            'visible_bbox': [vx, vy, vw, vh]
+        })
+    return {'regions': regions}
 
-def convert_seq(set_index, input_dir, output_dir, interval=1):
+
+def convert_seq(set_index, input_dir, output_dir, annotations, interval=1):
     set_name = 'set{:02}'.format(set_index)
     img_set_path = os.path.join(input_dir, set_name)
     assert os.path.exists(
@@ -141,13 +163,22 @@ def convert_seq(set_index, input_dir, output_dir, interval=1):
         imgs_path = os.path.join(img_set_path, j)
         imgs = read_seq(imgs_path, interval)
         seq_name = j[:4]
+        seq_index = int(j[1:4])
         seq_save_path = os.path.join(set_save_path, seq_name)
         if not os.path.exists(seq_save_path):
             os.mkdir(seq_save_path)
         for ix, img in imgs:
             img_name = '{:05}.jpg'.format(ix)
             img_path = os.path.join(seq_save_path, img_name)
-            open(img_path, 'wb').write(img)
+            with open(img_path, 'wb') as f:
+                f.write(img)
+            annotation_name = '{:05}.json'.format(ix)
+            annotation_path = os.path.join(seq_save_path, annotation_name)
+            image_annotations = make_image_annotation(annotations, set_index,
+                seq_index, ix)
+            with open(annotation_path, 'w') as f:
+                json.dump(image_annotations, f)
+
 
 def main():
     args = parse_args()
@@ -172,16 +203,8 @@ def main():
     print(test_img_save_path)
     print('Annotations will be saved to {}'.format(anno_save_path))
 
-    #  convert .seq file into .jpg
-    for i in range(train_range[0], train_range[1]):
-        convert_seq(i, dir_path, train_img_save_path, interval=args.train_interval)
-    for i in range(test_range[0], test_range[1]):
-        convert_seq(i, dir_path, test_img_save_path, interval=args.test_interval)
-
-    print('Images have been saved.')
-
     # convert .vbb file into .json
-    # example: anno['00']['00']['frames']['0'][0]['pos']
+    # example: anno['00']['00']['frames'][0][0]['pos']
     anno = defaultdict(dict)
     for i in range(num[0], num[1]):
         anno['{:02}'.format(i)] = defaultdict(dict)
@@ -198,6 +221,14 @@ def main():
         json.dump(anno, f)
 
     print('Annotations have been saved.')
+
+    #  convert .seq file into .jpg
+    for i in range(train_range[0], train_range[1]):
+        convert_seq(i, dir_path, train_img_save_path, anno, interval=args.train_interval)
+    for i in range(test_range[0], test_range[1]):
+        convert_seq(i, dir_path, test_img_save_path, anno, interval=args.test_interval)
+
+    print('Images have been saved.')
 
     print('Done, time spends: {}s'.format(int(time.time() - time_flag)))
 
